@@ -1,0 +1,13 @@
+# Example Configuration for Protheon
+serial:
+  baudrate: 115200
+  ping_interval: 1.0
+
+filtering:
+  ema_alpha: 0.3
+  deadzone: 2.0
+
+gestures:
+  threshold_closed: 65.0
+  threshold_open: 35.0
+  hold_time_ms: 150

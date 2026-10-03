@@ -1,0 +1,17 @@
+{
+  "min": {
+    "thumb": 300,
+    "index": 300,
+    "middle": 300,
+    "ring": 300,
+    "pinky": 300
+  },
+  "max": {
+    "thumb": 700,
+    "index": 700,
+    "middle": 700,
+    "ring": 700,
+    "pinky": 700
+  },
+  "calibrated": false
+}

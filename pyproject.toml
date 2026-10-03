@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protheon"
+version = "0.1.0"
+description = "Intelligent prosthetic hand control platform using Arduino, flex sensors, real-time signal processing, gesture recognition, and safe servo control."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT License" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Human Machine Interfaces",
+]
+dependencies = [
+    "pyserial>=3.5",
+    "PySide6>=6.5.0",
+    "pyqtgraph>=0.13.0",
+    "numpy>=1.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-v"
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "backend"
+]
