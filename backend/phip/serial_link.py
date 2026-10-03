@@ -21,7 +21,9 @@ import logging
 logger = logging.getLogger("phip.serial")
 
 
-class SerialLink:
+from phip.hardware import HardwareInterface
+
+class SerialLink(HardwareInterface):
     # Connection states
     STATE_DISCONNECTED = "DISCONNECTED"
     STATE_CONNECTED = "CONNECTED"

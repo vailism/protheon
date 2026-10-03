@@ -16,7 +16,9 @@ logger = logging.getLogger("phip.simulator")
 FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky']
 
 
-class SimulatedArduino:
+from phip.hardware import HardwareInterface
+
+class SimulatedArduino(HardwareInterface):
     """
     Generates realistic synthetic sensor data that mimics the Arduino
     telemetry protocol's parsed output format.
@@ -42,6 +44,11 @@ class SimulatedArduino:
         self._current_idx = 0
         self._tick = 0
         self._servo_angles = {f: 0 for f in FINGERS}
+        
+        # Fault injection state
+        self.active_faults = {}
+        self.drop_packets = False
+        self.extra_delay = 0.0
 
     def connect(self, port=None):
         """Simulated connect — always succeeds."""
@@ -96,6 +103,20 @@ class SimulatedArduino:
     def list_ports():
         return ['SIMULATOR']
 
+    def inject_fault(self, fault_type, finger=None):
+        if fault_type == "CLEAR":
+            self.active_faults.clear()
+            self.drop_packets = False
+            self.extra_delay = 0.0
+            logger.info("Cleared all simulator faults.")
+        elif fault_type == "DROP":
+            self.drop_packets = True
+        elif fault_type == "DELAY":
+            self.extra_delay = 0.1 # 100ms delay per packet
+        elif finger and finger in FINGERS:
+            self.active_faults[finger] = fault_type
+            logger.info(f"Injected {fault_type} on {finger}")
+
     def _generate_loop(self):
         """Generate synthetic telemetry at the configured rate."""
         interval = 1.0 / self.rate_hz
@@ -116,23 +137,42 @@ class SimulatedArduino:
             sensors = {}
             for f in FINGERS:
                 base = target[f]
-                noise = random.gauss(0, 3)
-                drift = 2 * math.sin(self._tick * 0.01)
-                sensors[f] = int(max(0, min(1023, base + noise + drift)))
+                
+                # Apply Faults
+                fault = self.active_faults.get(f)
+                if fault == "STUCK":
+                    sensors[f] = base  # No noise, no drift, just stuck at base
+                elif fault == "DISCONNECT":
+                    sensors[f] = 0
+                elif fault == "JUMP":
+                    sensors[f] = min(1023, base + 400)
+                elif fault == "NOISE":
+                    sensors[f] = int(max(0, min(1023, base + random.gauss(0, 50))))
+                else:
+                    noise = random.gauss(0, 3)
+                    drift = 2 * math.sin(self._tick * 0.01)
+                    sensors[f] = int(max(0, min(1023, base + noise + drift)))
+
+            # Simulate hardware fault flags matching Arduino protocol
+            faults_bitmask = 0
+            for i, f in enumerate(FINGERS):
+                if self.active_faults.get(f) in ["STUCK", "DISCONNECT"]:
+                    faults_bitmask |= (1 << i)
 
             data = {
                 'timestamp': timestamp,
                 'sensors': sensors,
                 'servos': dict(self._servo_angles),
-                'status': 0,
+                'status': faults_bitmask,
                 'estop': False,
-                'sensor_faults': 0,
+                'sensor_faults': faults_bitmask,
             }
 
-            for cb in self._callbacks:
-                try:
-                    cb(data)
-                except Exception as e:
-                    logger.error(f"Simulator callback error: {e}")
+            if not self.drop_packets:
+                for cb in self._callbacks:
+                    try:
+                        cb(data)
+                    except Exception as e:
+                        logger.error(f"Simulator callback error: {e}")
 
-            time.sleep(interval)
+            time.sleep(interval + self.extra_delay)

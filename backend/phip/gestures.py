@@ -31,6 +31,20 @@ class GestureRecognizer:
         self.current_gesture = "UNKNOWN"
         self._candidate_gesture = "UNKNOWN"
         self._candidate_since = 0  # timestamp in ms when candidate first seen
+        
+        # Format: {'GESTURE_NAME': {'thumb': 'CLOSED', 'index': 'OPEN', ...}}
+        self.rules = {
+            'CLOSED_FIST': {f: 'CLOSED' for f in FINGERS},
+            'OPEN_HAND': {f: 'OPEN' for f in FINGERS},
+            'PINCH': {'thumb': 'CLOSED', 'index': 'CLOSED', 'middle': 'OPEN', 'ring': 'OPEN', 'pinky': 'OPEN'},
+            'POINT': {'thumb': 'CLOSED', 'index': 'OPEN', 'middle': 'CLOSED', 'ring': 'CLOSED', 'pinky': 'CLOSED'},
+            'PEACE': {'thumb': 'CLOSED', 'index': 'OPEN', 'middle': 'OPEN', 'ring': 'CLOSED', 'pinky': 'CLOSED'},
+            'THUMBS_UP': {'thumb': 'OPEN', 'index': 'CLOSED', 'middle': 'CLOSED', 'ring': 'CLOSED', 'pinky': 'CLOSED'}
+        }
+
+    def add_rule(self, name, rule_dict):
+        self.rules[name] = rule_dict
+        logger.info(f"Added custom gesture rule: {name}")
 
     def recognize(self, percentages):
         """
@@ -63,33 +77,19 @@ class GestureRecognizer:
         return self.current_gesture
 
     def _classify(self, closed, opened):
-        """Pure rule-based classification — no side effects."""
-        # All fingers closed → FIST
-        if all(closed[f] for f in FINGERS):
-            return "CLOSED_FIST"
-
-        # All fingers open → OPEN HAND
-        if all(opened[f] for f in FINGERS):
-            return "OPEN_HAND"
-
-        # Thumb & Index closed, rest open → PINCH
-        if (closed['thumb'] and closed['index'] and 
-            opened['middle'] and opened['ring'] and opened['pinky']):
-            return "PINCH"
-
-        # Only index extended, rest closed (including thumb) → POINT
-        if (closed['thumb'] and opened['index'] and 
-            closed['middle'] and closed['ring'] and closed['pinky']):
-            return "POINT"
-
-        # Thumb closed, index & middle extended, ring & pinky closed → PEACE
-        if (closed['thumb'] and opened['index'] and opened['middle'] and 
-            closed['ring'] and closed['pinky']):
-            return "PEACE"
-
-        # Thumb extended, all others closed → THUMBS UP
-        if (opened['thumb'] and closed['index'] and 
-            closed['middle'] and closed['ring'] and closed['pinky']):
-            return "THUMBS_UP"
-
+        """Rule-based classification evaluated dynamically against self.rules."""
+        
+        for name, rule in self.rules.items():
+            match = True
+            for f, required_state in rule.items():
+                if required_state == 'CLOSED' and not closed[f]:
+                    match = False
+                    break
+                elif required_state == 'OPEN' and not opened[f]:
+                    match = False
+                    break
+            
+            if match:
+                return name
+                
         return "TRANSITIONING"
