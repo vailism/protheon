@@ -26,6 +26,9 @@ class DiagnosticsPage(QWidget):
         row.addWidget(self.btn_connect)
         card.addLayout(row)
         
+        self.btn_rescan = PrimaryButton("AUTO-DISCOVER HARDWARE")
+        card.addWidget(self.btn_rescan)
+        
         self.lbl_diag = QLabel("Waiting for data...")
         self.lbl_diag.setFont(Typography.metadata())
         card.addWidget(self.lbl_diag)

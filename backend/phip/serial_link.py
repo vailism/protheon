@@ -58,11 +58,13 @@ class SerialLink(HardwareInterface):
             self.port = port
 
         if not self.port:
-            self.port = self.auto_detect_port()
-            if not self.port:
-                logger.warning("No Arduino found on any USB serial port.")
+            logger.info("Starting safe hardware discovery...")
+            found_port = self.discover_hardware()
+            if not found_port:
+                logger.warning("No valid Protheon hardware found. Remaining in SIMULATION mode.")
                 self._set_state(self.STATE_DISCONNECTED)
                 return False
+            self.port = found_port
 
         try:
             self._serial = serial.Serial(self.port, self.baudrate, timeout=0.1)
@@ -100,13 +102,57 @@ class SerialLink(HardwareInterface):
         self._set_state(self.STATE_DISCONNECTED)
 
     def auto_detect_port(self):
-        """Find Arduino Uno serial port on macOS."""
+        """Legacy auto-detect. Now replaced by discover_hardware."""
+        return None
+
+    def discover_hardware(self):
+        """
+        Safe Hardware Discovery Layer:
+        1. Enumerate USB serial ports.
+        2. Attempt handshake with each.
+        3. Validate response (TEL|, ACK|PING, SYS|START|PHIP_V2).
+        """
         ports = serial.tools.list_ports.comports()
+        candidates = []
         for p in ports:
             desc = (p.device + " " + (p.description or "")).lower()
-            if "usbmodem" in desc or "usbserial" in desc or "tty.usb" in desc:
-                logger.info(f"Auto-detected Arduino on: {p.device}")
-                return p.device
+            if "usbmodem" in desc or "usbserial" in desc or "tty.usb" in desc or "arduino" in desc or "serial" in desc:
+                candidates.append(p.device)
+                
+        for device in candidates:
+            logger.info(f"Probing {device} for Protheon firmware...")
+            try:
+                # Open with very short timeout for probing
+                test_serial = serial.Serial(device, self.baudrate, timeout=0.5)
+                time.sleep(2.0) # Wait for Arduino bootloader to complete
+                test_serial.reset_input_buffer()
+                
+                # Send PING
+                payload = "CMD|PING|0|0|"
+                chk = 0
+                for c in payload: chk ^= ord(c)
+                chk &= 0xFF
+                test_serial.write(f"{payload}{chk}\n".encode('ascii'))
+                
+                # Wait for response up to 1 second
+                start_t = time.time()
+                valid = False
+                while time.time() - start_t < 1.0:
+                    line = test_serial.readline().decode('ascii', errors='ignore').strip()
+                    if line.startswith("ACK|PING") or line.startswith("TEL|") or "PHIP_V2" in line:
+                        valid = True
+                        break
+                        
+                test_serial.close()
+                if valid:
+                    logger.info(f"✅ Valid Protheon hardware detected on {device}!")
+                    return device
+                else:
+                    logger.debug(f"No valid response from {device}.")
+                    
+            except Exception as e:
+                logger.debug(f"Could not probe {device}: {e}")
+                
         return None
 
     @staticmethod

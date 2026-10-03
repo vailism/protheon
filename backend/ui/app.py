@@ -77,10 +77,15 @@ class ProtheonApp(QMainWindow):
         
         self.db.start_session(name="Default UI Session", mode="SIMULATION" if self.simulate else "HARDWARE")
         
-        if self.simulate:
-            self.link = SimulatedArduino()
-        else:
+        # Safe Hardware Discovery
+        if not self.simulate:
             self.link = SerialLink()
+            if not self.link.connect():
+                logger.warning("Hardware discovery failed. Falling back to SIMULATION mode.")
+                self.simulate = True
+                self.link = SimulatedArduino()
+        else:
+            self.link = SimulatedArduino()
             
         self.replay_link = ReplayHardware(session_id=None)
         
@@ -145,9 +150,11 @@ class ProtheonApp(QMainWindow):
         self.sidebar.nav_requested.connect(self._switch_page)
         self.topbar.estop_requested.connect(self._emergency_stop)
         
-        # Connect Actions
+        # Diagnostics
         self.pages['diagnostics'].btn_scan.clicked.connect(self._scan_ports)
         self.pages['diagnostics'].btn_connect.clicked.connect(self._manual_connect)
+        self.pages['diagnostics'].btn_rescan.clicked.connect(self._rescan_hardware)
+        
         if self.simulate:
             self.pages['diagnostics'].btn_noise.clicked.connect(lambda: self.link.inject_fault("NOISE", "thumb"))
             self.pages['diagnostics'].btn_stuck.clicked.connect(lambda: self.link.inject_fault("STUCK", "index"))
@@ -260,6 +267,16 @@ class ProtheonApp(QMainWindow):
     @Slot(str)
     def _on_state_change(self, state):
         self.sidebar.update_connection(state)
+        
+        # Safety enforcement on disconnect
+        if state != "CONNECTED" and self.hardware_armed:
+            logger.warning("Hardware disconnected! Forcing safe state.")
+            self.hardware_armed = False
+            self.pages['control'].lbl_status.setText("DISCONNECTED - DISARMED")
+            self.pages['control'].lbl_status.setStyleSheet(f"color: {Colors.RED};")
+            self.pages['dashboard'].update_safety(False, self.estop_active)
+            for f in FINGERS:
+                self.pages['control'].sliders[f].setEnabled(False)
 
     def _emergency_stop(self):
         self.estop_active = True
@@ -357,7 +374,32 @@ class ProtheonApp(QMainWindow):
     # Diagnostics
     def _scan_ports(self):
         self.pages['diagnostics'].combo_ports.clear()
-        self.pages['diagnostics'].combo_ports.addItems(self.link.list_ports())
+        self.pages['diagnostics'].combo_ports.addItems(SerialLink.list_ports())
+        
+    def _rescan_hardware(self):
+        """Manual Rescan Hardware Action"""
+        self.link.disconnect()
+        
+        if isinstance(self.link, SimulatedArduino):
+            # Attempt to switch to SerialLink
+            new_link = SerialLink()
+            if new_link.connect():
+                self.link = new_link
+                self.simulate = False
+                self.sidebar.update_mode("HARDWARE")
+                self.topbar.update_page_info("Diagnostics", "Hardware detected and connected.")
+                
+                # Re-bind callbacks
+                self.link.add_callback(self.bridge.telemetry_signal.emit)
+                self.link.add_state_callback(self.bridge.state_signal.emit)
+                self._on_state_change("CONNECTED")
+            else:
+                self.topbar.update_page_info("Diagnostics", "Rescan failed. Still in simulation.")
+                # Re-connect simulator
+                self.link.connect()
+        else:
+            # Already on SerialLink, just reconnect to trigger discovery
+            self.link.connect()
         
     def _manual_connect(self):
         self.link.disconnect()
