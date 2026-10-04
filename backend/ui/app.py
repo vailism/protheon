@@ -150,11 +150,13 @@ class ProtheonApp(QMainWindow):
         self.sidebar.nav_requested.connect(self._switch_page)
         self.topbar.estop_requested.connect(self._emergency_stop)
         
-        # Diagnostics
-        self.pages['diagnostics'].btn_scan.clicked.connect(self._scan_ports)
-        self.pages['diagnostics'].btn_connect.clicked.connect(self._manual_connect)
-        self.pages['diagnostics'].btn_rescan.clicked.connect(self._rescan_hardware)
+        # Topbar Actions
+        self.topbar.scan_requested.connect(self._scan_ports)
+        self.topbar.connect_requested.connect(self._manual_connect)
+        self.topbar.disconnect_requested.connect(self.link.disconnect)
+        self.topbar.rescan_requested.connect(self._rescan_hardware)
         
+        # Diagnostics
         if self.simulate:
             self.pages['diagnostics'].btn_noise.clicked.connect(lambda: self.link.inject_fault("NOISE", "thumb"))
             self.pages['diagnostics'].btn_stuck.clicked.connect(lambda: self.link.inject_fault("STUCK", "index"))
@@ -220,8 +222,7 @@ class ProtheonApp(QMainWindow):
         gesture = self.recognizer.recognize(filtered)
         
         # Update Dashboard
-        self.pages['dashboard'].update_telemetry(filtered, gesture)
-        self.pages['dashboard'].update_safety(self.hardware_armed, self.estop_active)
+        self.pages['dashboard'].update_telemetry(raw, filtered, gesture)
         
         # Update Virtual Hand
         self.pages['virtual_hand'].update_hand(filtered)
@@ -268,13 +269,22 @@ class ProtheonApp(QMainWindow):
     def _on_state_change(self, state):
         self.sidebar.update_connection(state)
         
+        is_connected = state == "CONNECTED"
+        self.topbar.update_status(is_connected, self.hardware_armed)
+        
+        # Dashboard Status Label
+        arm_str = "ARMED" if self.hardware_armed else "DISARMED"
+        fw_str = "DISARMED"
+        # Avoid breaking if gesture isn't set yet
+        gest_name = "UNKNOWN"
+        self.pages['dashboard'].status_lbl.setText(f"{state} · {gest_name} · Host: {arm_str} / Firmware: {fw_str} · LOCKED")
+        
         # Safety enforcement on disconnect
         if state != "CONNECTED" and self.hardware_armed:
             logger.warning("Hardware disconnected! Forcing safe state.")
             self.hardware_armed = False
             self.pages['control'].lbl_status.setText("DISCONNECTED - DISARMED")
             self.pages['control'].lbl_status.setStyleSheet(f"color: {Colors.RED};")
-            self.pages['dashboard'].update_safety(False, self.estop_active)
             for f in FINGERS:
                 self.pages['control'].sliders[f].setEnabled(False)
 
@@ -282,9 +292,13 @@ class ProtheonApp(QMainWindow):
         self.estop_active = True
         self.hardware_armed = False
         self.link.send_stop()
+        self.topbar.update_status(self.link.is_connected, False)
+        
+        arm_str = "ARMED" if self.hardware_armed else "DISARMED"
+        self.pages['dashboard'].status_lbl.setText(f"{self.link.state} · UNKNOWN · Host: {arm_str} / Firmware: E-STOP · LOCKED")
+        self.link.send_stop()
         self.pages['control'].lbl_status.setText("E-STOP ACTIVE")
         self.pages['control'].lbl_status.setStyleSheet("color: #FF4C4C;")
-        self.pages['dashboard'].update_safety(self.hardware_armed, self.estop_active)
         logger.warning("EMERGENCY STOP activated by user.")
 
     # Calibration Wrappers
@@ -373,8 +387,8 @@ class ProtheonApp(QMainWindow):
         
     # Diagnostics
     def _scan_ports(self):
-        self.pages['diagnostics'].combo_ports.clear()
-        self.pages['diagnostics'].combo_ports.addItems(SerialLink.list_ports())
+        self.topbar.combo_ports.clear()
+        self.topbar.combo_ports.addItems(SerialLink.list_ports())
         
     def _rescan_hardware(self):
         """Manual Rescan Hardware Action"""
@@ -403,9 +417,18 @@ class ProtheonApp(QMainWindow):
         
     def _manual_connect(self):
         self.link.disconnect()
-        port = self.pages['diagnostics'].combo_ports.currentText()
-        if port:
+        port = self.topbar.combo_ports.currentText()
+        if port and "no ports" not in port.lower():
+            if isinstance(self.link, SimulatedArduino):
+                self.link = SerialLink()
+                self.link.add_callback(self.bridge.telemetry_signal.emit)
+                self.link.add_state_callback(self.bridge.state_signal.emit)
             self.link.connect(port)
+            self.simulate = False
+            self.sidebar.update_mode("HARDWARE")
+            self.topbar.update_mode("REAL HARDWARE")
+        else:
+            self.link.connect()
 
     # Experiments
     def _start_experiment(self):

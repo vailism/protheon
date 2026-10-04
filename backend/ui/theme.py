@@ -5,24 +5,24 @@ from PySide6.QtGui import QFont, QColor
 from PySide6.QtCore import Qt
 
 class Colors:
-    BG_BASE = "#0D0D12"       # Main background
-    BG_PANEL = "#16161E"      # Cards / Panels
-    BG_PANEL_HOVER = "#20202A"
+    BG_BASE = "#0D1117"       # Main background
+    BG_PANEL = "#161B22"      # Cards / Panels
+    BG_PANEL_HOVER = "#21262D"
     
-    TEXT_MAIN = "#E4E4E5"
-    TEXT_MUTED = "#8A8A93"
+    TEXT_MAIN = "#E6EDF3"
+    TEXT_MUTED = "#7D8590"
     
-    ACCENT = "#4DA6FF"        # Information / Selected
-    GREEN = "#4ECB71"         # Healthy / Connected / Running
-    AMBER = "#FFD93D"         # Warning
-    RED = "#FF4C4C"           # Fault / Emergency
-    GRAY = "#444444"          # Inactive
+    ACCENT = "#3bbfa6"        # Information / Selected / Cyan
+    GREEN = "#238636"         # Healthy / Connected / Running
+    AMBER = "#D29922"         # Warning
+    RED = "#d64455"           # Fault / Emergency
+    GRAY = "#30363D"          # Inactive
 
-    BORDER = "#2A2A35"
+    BORDER = "#30363D"
 
 class Typography:
-    FAMILY = "Helvetica Neue, Arial, sans-serif"
-    MONO_FAMILY = "Menlo, Consolas, monospace"
+    FAMILY = "Inter, -apple-system, sans-serif"
+    MONO_FAMILY = "JetBrains Mono, Consolas, monospace"
 
     @classmethod
     def get_font(cls, size, bold=False, mono=False):
